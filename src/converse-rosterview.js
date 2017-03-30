@@ -12,6 +12,7 @@
             "tpl!pending_contact",
             "tpl!requesting_contact",
             "tpl!roster",
+            "tpl!roster_filter",
             "tpl!roster_item"
     ], factory);
 }(this, function (
@@ -20,9 +21,11 @@
             tpl_pending_contact,
             tpl_requesting_contact,
             tpl_roster,
+            tpl_roster_filter,
             tpl_roster_item) {
     "use strict";
     var $ = converse.env.jQuery,
+        sizzle = converse.env.sizzle,
         utils = converse.env.utils,
         Strophe = converse.env.Strophe,
         $iq = converse.env.$iq,
@@ -130,6 +133,7 @@
 
             _converse.RosterFilterView = Backbone.View.extend({
                 tagName: 'span',
+                className: 'hidden',
                 events: {
                     "keydown .roster-filter": "liveFilter",
                     "submit form.roster-filter-form": "submitFilter",
@@ -145,7 +149,7 @@
                 },
 
                 render: function () {
-                    this.$el.html(tpl_roster(
+                    this.el.innerHTML = tpl_roster_filter(
                         _.extend(this.model.toJSON(), {
                             placeholder: __('Filter'),
                             label_contacts: LABEL_CONTACTS,
@@ -158,19 +162,18 @@
                             label_away: __('Away'),
                             label_xa: __('Extended Away'),
                             label_offline: __('Offline')
-                        })
-                    ));
+                        }));
                     this.renderClearButton();
-                    return this.$el;
+                    return this.el;
                 },
 
                 renderClearButton: function () {
-                    var $roster_filter = this.$('.roster-filter');
-                    $roster_filter[this.tog($roster_filter.val())]('x');
+                    var roster_filter = this.el.querySelector('.roster-filter');
+                    roster_filter.classList[this.tog(roster_filter.value)]('x');
                 },
 
                 tog: function (v) {
-                    return v?'addClass':'removeClass';
+                    return v?'add':'remove';
                 },
 
                 toggleX: function (ev) {
@@ -182,7 +185,7 @@
                 changeChatStateFilter: function (ev) {
                     if (ev && ev.preventDefault) { ev.preventDefault(); }
                     this.model.save({
-                        'chat_state': this.$('.state-type').val()
+                        'chat_state': this.el.querySelector('.state-type').value
                     });
                 },
 
@@ -192,20 +195,20 @@
                     if (type === 'state') {
                         this.model.save({
                             'filter_type': type,
-                            'chat_state': this.$('.state-type').val()
+                            'chat_state': this.el.querySelector('.state-type').value
                         });
                     } else {
                         this.model.save({
                             'filter_type': type,
-                            'filter_text': this.$('.roster-filter').val(),
+                            'filter_text': this.el.querySelector('.roster-filter').value
                         });
                     }
                 },
 
                 liveFilter: _.debounce(function (ev) {
                     this.model.save({
-                        'filter_type': this.$('.filter-type').val(),
-                        'filter_text': this.$('.roster-filter').val()
+                        'filter_type': this.el.querySelector('.filter-type').value,
+                        'filter_text': this.el.querySelector('.roster-filter').value
                     });
                 }, 250),
 
@@ -234,7 +237,7 @@
 
                 hide: function () {
                     if (!this.$el.is(':visible')) { return this; }
-                    if (this.$('.roster-filter').val().length > 0) {
+                    if (this.el.querySelector('.roster-filter').value.length > 0) {
                         // Don't hide if user is currently filtering.
                         return;
                     }
@@ -276,14 +279,19 @@
                 },
 
                 render: function () {
-                    this.$roster = $('<dl class="roster-contacts" style="display: none;"></dl>');
-                    this.$el.html(this.filter_view.render());
+                    this.renderRoster();
+                    this.el.innerHTML = this.filter_view.render().outerHTML;
                     if (!_converse.allow_contact_requests) {
                         // XXX: if we ever support live editing of config then
                         // we'll need to be able to remove this class on the fly.
-                        this.$el.addClass('no-contact-requests');
+                        this.el.classList.add('no-contact-requests');
                     }
                     return this;
+                },
+
+                renderRoster: function () {
+                    this.$roster = $('<dl class="roster-contacts" style="display: none;"></dl>');
+                    this.roster = this.$roster[0];
                 },
 
                 createRosterFilter: function () {
@@ -320,7 +328,7 @@
                 },
 
                 update: _.debounce(function () {
-                    if (this.$roster.parent().length === 0) {
+                    if (_.isNull(this.roster.parentElement)) {
                         this.$el.append(this.$roster.show());
                     }
                     return this.showHideFilter();
@@ -330,7 +338,7 @@
                     if (!this.$el.is(':visible')) {
                         return;
                     }
-                    if (this.$roster.hasScrollBar()) {
+                    if ($(this.roster).hasScrollBar()) {
                         this.filter_view.show();
                     } else if (!this.filter_view.isActive()) {
                         this.filter_view.hide();
@@ -366,7 +374,7 @@
                 reset: function () {
                     _converse.roster.reset();
                     this.removeAll();
-                    this.$roster = $('<dl class="roster-contacts" style="display: none;"></dl>');
+                    this.renderRoster();
                     this.render().update();
                     return this;
                 },
@@ -485,12 +493,15 @@
                 appendGroup: function (view) {
                     /* Add the group at the bottom of the roster
                      */
-                    var $last = this.$roster.find('.roster-group').last();
-                    var $siblings = $last.siblings('dd');
-                    if ($siblings.length > 0) {
-                        $siblings.last().after(view.$el);
+                    
+                    var last = sizzle('.roster-group:last', this.roster);
+                    var siblings = _.filter(last.parentNode.children, function (child) {
+                        return child !== last && child.tagName === 'dd';
+                    });
+                    if (siblings.length > 0) {
+                        siblings[siblings.length-1].insertAdjacentHTML(view.el.outerHTML);
                     } else {
-                        $last.after(view.$el);
+                        last.insertAdjacentHTML('afterend', view.el.outerHTML);
                     }
                     return this;
                 },
@@ -576,7 +587,7 @@
                     _.each(classes_to_remove,
                         function (cls) {
                             if (_.includes(that.el.className, cls)) {
-                                that.$el.removeClass(cls);
+                                that.el.classList.remove(cls);
                             }
                         });
                     this.$el.addClass(chat_status).data('status', chat_status);
@@ -593,34 +604,31 @@
                          *
                          *  So in both cases the user is a "pending" contact.
                          */
-                        this.$el.addClass('pending-xmpp-contact');
-                        this.$el.html(tpl_pending_contact(
+                        this.el.classList.add('pending-xmpp-contact');
+                        this.el.innerHTML = tpl_pending_contact(
                             _.extend(item.toJSON(), {
                                 'desc_remove': __('Click to remove this contact'),
                                 'allow_chat_pending_contacts': _converse.allow_chat_pending_contacts
-                            })
-                        ));
+                            }));
                     } else if (requesting === true) {
-                        this.$el.addClass('requesting-xmpp-contact');
-                        this.$el.html(tpl_requesting_contact(
+                        this.el.classList.add('requesting-xmpp-contact');
+                        this.el.innerHTML = tpl_requesting_contact(
                             _.extend(item.toJSON(), {
                                 'desc_accept': __("Click to accept this contact request"),
                                 'desc_decline': __("Click to decline this contact request"),
                                 'allow_chat_pending_contacts': _converse.allow_chat_pending_contacts
-                            })
-                        ));
+                            }));
                     } else if (subscription === 'both' || subscription === 'to') {
-                        this.$el.addClass('current-xmpp-contact');
+                        this.el.classList.add('current-xmpp-contact');
                         this.$el.removeClass(_.without(['both', 'to'], subscription)[0]).addClass(subscription);
-                        this.$el.html(tpl_roster_item(
+                        this.el.innerHTML = tpl_roster_item(
                             _.extend(item.toJSON(), {
                                 'desc_status': STATUSES[chat_status||'offline'],
                                 'desc_chat': __('Click to chat with this contact'),
                                 'desc_remove': __('Click to remove this contact'),
                                 'title_fullname': __('Name'),
                                 'allow_contact_removal': _converse.allow_contact_removal
-                            })
-                        ));
+                            }));
                     }
                     return this;
                 },
@@ -734,14 +742,12 @@
                 },
 
                 render: function () {
-                    this.$el.attr('data-group', this.model.get('name'));
-                    this.$el.html(
-                        $(tpl_group_header({
-                            label_group: this.model.get('name'),
-                            desc_group_toggle: this.model.get('description'),
-                            toggle_state: this.model.get('state')
-                        }))
-                    );
+                    this.el.setAttribute('data-group', this.model.get('name'));
+                    this.el.innerHTML = tpl_group_header({
+                        label_group: this.model.get('name'),
+                        desc_group_toggle: this.model.get('description'),
+                        toggle_state: this.model.get('state')
+                    });
                     return this;
                 },
 
