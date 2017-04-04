@@ -37,10 +37,10 @@
     /* Configuration of Lodash templates (this config is distinct to the
      * config of requirejs-tpl in main.js). This one is for normal inline templates.
      */
-    _.templateSettings = {
-        evaluate : /\{\[([\s\S]+?)\]\}/g,
-        interpolate : /\{\{([\s\S]+?)\}\}/g
-    };
+    //_.templateSettings = {
+    //    evaluate : /\{\[([\s\S]+?)\]\}/g,
+    //    interpolate : /\{\{([\s\S]+?)\}\}/g
+    //};
 
     var _converse = {};
     _converse.templates = {};
